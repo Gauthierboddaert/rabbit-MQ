@@ -1,0 +1,71 @@
+FROM php:8.2.1-fpm-alpine
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+
+RUN apk add --no-cache bash
+
+# Install Symfony CLI
+RUN curl -1sLf 'https://dl.cloudsmith.io/public/symfony/stable/setup.alpine.sh' | bash
+RUN apk add --no-cache symfony-cli
+RUN apk add git
+
+# Install required packages and extensions
+RUN set -ex \
+    && apk --no-cache add \
+    postgresql-dev \
+    libpng-dev \
+    libzip-dev \
+    zip \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    linux-headers \
+    autoconf \
+    g++ \
+    make \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd \
+    && docker-php-ext-install zip \
+    && docker-php-ext-install -j$(nproc) intl pdo mysqli pdo_mysql \
+    && docker-php-ext-install sysvsem \
+    && docker-php-ext-enable pdo_mysql
+
+# Install AMQP extension
+RUN apk add --no-cache rabbitmq-c rabbitmq-c-dev \
+    && pecl install amqp-1.11.0 \
+    && docker-php-ext-enable amqp
+
+# Install Yarn
+RUN apk add --no-cache yarn
+
+# Install fonts and other dependencies
+RUN apk add --no-cache \
+        libstdc++ \
+        libx11 \
+        libxrender \
+        libxext \
+        ca-certificates \
+        fontconfig \
+        freetype \
+        ttf-droid \
+        ttf-freefont \
+        ttf-liberation \
+    ;
+
+RUN apk add --no-cache $PHPIZE_DEPS \
+    && pecl install xdebug-3.2.1 \
+    && docker-php-ext-enable xdebug \
+    && echo "xdebug.mode=coverage" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
+    && echo "xdebug.client_host=host.docker.internal" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+
+WORKDIR /app/
+
+RUN echo "- /usr/local/etc/php/conf.d/docker-fpm.ini" >> /usr/local/etc/php/php.ini \
+    && echo "- /usr/local/etc/php/conf.d/docker-php-ext-gd.ini" >> /usr/local/etc/php/php.ini \
+    && echo "- /usr/local/etc/php/conf.d/docker-php-ext-intl.ini" >> /usr/local/etc/php/php.ini \
+    && echo "- /usr/local/etc/php/conf.d/docker-php-ext-mysqli.ini" >> /usr/local/etc/php/php.ini \
+    && echo "- /usr/local/etc/php/conf.d/docker-php-ext-pdo_mysql.ini" >> /usr/local/etc/php/php.ini \
+    && echo "- /usr/local/etc/php/conf.d/docker-php-ext-sysvsem.ini" >> /usr/local/etc/php/php.ini \
+    && echo "- /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini" >> /usr/local/etc/php/php.ini \
+    && echo "- /usr/local/etc/php/conf.d/docker-php-ext-zip.ini" >> /usr/local/etc/php/php.ini \
+    ;
